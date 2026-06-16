@@ -90,6 +90,7 @@ export async function addCategory(categoryName: string): Promise<string[]> {
       return await fetchCategories();
     } catch (e) {
       console.error("Error adding category to Firestore", e);
+      throw e;
     }
   }
 
@@ -110,6 +111,7 @@ export async function removeCategory(categoryName: string): Promise<string[]> {
       return await fetchCategories();
     } catch (e) {
       console.error("Error deleting category from Firestore", e);
+      throw e;
     }
   }
 
@@ -216,6 +218,7 @@ export async function addProduct(prod: Omit<Product, 'id' | 'createdAt'>): Promi
       return await fetchProducts();
     } catch (e) {
       console.error("Error adding product to Firestore", e);
+      throw e;
     }
   }
 
@@ -233,6 +236,7 @@ export async function deleteProduct(id: string): Promise<Product[]> {
       return await fetchProducts();
     } catch (e) {
       console.error("Error deleting product from Firestore", e);
+      throw e;
     }
   }
 

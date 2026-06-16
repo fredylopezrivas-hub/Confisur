@@ -63,18 +63,50 @@ export function AdminPanel({
     setPassword('');
   };
 
-  // Convert uploaded image file to Base64
+  // Convert uploaded image file to Base64 with automatic lightweight canvas compression
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert('La imagen es muy pesada. Intenta con una menor a 2MB para un rendimiento óptimo.');
-        return;
-      }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewImageUrl(reader.result as string);
-        setPreviewError(false);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          // Initialize canvas
+          const canvas = document.createElement('canvas');
+          const maxDimension = 600; // Optimal web catalog resolution
+          let width = img.width;
+          let height = img.height;
+
+          // Maintain aspect ratio
+          if (width > height) {
+            if (width > maxDimension) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            }
+          } else {
+            if (height > maxDimension) {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Compress image to JPEG at 0.65 quality (visually stunning, extremely lightweight ~35KB)
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.65);
+            setNewImageUrl(compressedBase64);
+            setPreviewError(false);
+          } else {
+            // Fallback to original Base64 if context 2D is unavailable
+            setNewImageUrl(event.target?.result as string);
+            setPreviewError(false);
+          }
+        };
+        img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
     }

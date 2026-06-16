@@ -125,28 +125,48 @@ export default function App() {
 
   // Handle adding newly adapted products
   const handleAddProduct = async (newProdData: Omit<Product, 'id' | 'createdAt'>) => {
-    const updatedList = await addProduct(newProdData);
-    setProducts(updatedList);
+    try {
+      const updatedList = await addProduct(newProdData);
+      setProducts(updatedList);
+    } catch (e: any) {
+      console.error(e);
+      alert("❌ Error al guardar en Firebase:\n\nEsto suele pasar si las 'Reglas de Seguridad' (Security Rules) en tu Consola de Firebase están bloqueando las escrituras.\n\nAsegúrate de copiar y publicar las reglas sugeridas (allow read, write: if true;) en tu panel de Firebase.");
+    }
   };
 
   // Handle product deletion
   const handleDeleteProduct = async (id: string) => {
-    const updatedList = await deleteProduct(id);
-    setProducts(updatedList);
+    try {
+      const updatedList = await deleteProduct(id);
+      setProducts(updatedList);
+    } catch (e: any) {
+      console.error(e);
+      alert("❌ Error al eliminar en Firebase:\n\nEsto suele pasar si las 'Reglas de Seguridad' (Security Rules) de Firestore están bloqueando las escrituras.\n\nAsegúrate de actualizar tus reglas a modo público (allow read, write: if true;) temporalmente.");
+    }
   };
 
   // Handle adding new custom category from the administrator panel
   const handleAddCategory = async (categoryName: string) => {
-    const updatedCategories = await addCategory(categoryName);
-    setCategories(updatedCategories);
+    try {
+      const updatedCategories = await addCategory(categoryName);
+      setCategories(updatedCategories);
+    } catch (e: any) {
+      console.error(e);
+      alert("❌ Error al añadir categoría en Firebase. Verifica tus Reglas de Seguridad en Firestore.");
+    }
   };
 
   // Handle category deletion from the administrator panel
   const handleDeleteCategory = async (categoryName: string) => {
-    const updatedCategories = await removeCategory(categoryName);
-    setCategories(updatedCategories);
-    if (selectedCategory === categoryName) {
-      setSelectedCategory('Todos');
+    try {
+      const updatedCategories = await removeCategory(categoryName);
+      setCategories(updatedCategories);
+      if (selectedCategory === categoryName) {
+        setSelectedCategory('Todos');
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert("❌ Error al eliminar categoría en Firebase. Verifica tus Reglas de Seguridad en Firestore.");
     }
   };
 
