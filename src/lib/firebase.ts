@@ -3,6 +3,7 @@ import {
   getFirestore, 
   collection, 
   getDocs, 
+  getDoc,
   addDoc, 
   setDoc,
   deleteDoc, 
@@ -59,8 +60,10 @@ export async function fetchCategories(): Promise<string[]> {
         for (const cat of DEFAULT_CATEGORIES) {
           await setDoc(doc(db, 'categories', cat), { createdAt: Date.now() });
         }
+        localStorage.setItem('confisur_categories_cache', JSON.stringify(DEFAULT_CATEGORIES));
         return DEFAULT_CATEGORIES;
       }
+      localStorage.setItem('confisur_categories_cache', JSON.stringify(list));
       return list;
     } catch (e) {
       console.error("Error fetching categories from firestore", e);
@@ -71,12 +74,15 @@ export async function fetchCategories(): Promise<string[]> {
   const saved = localStorage.getItem('confisur_dyn_categories');
   if (saved) {
     try {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      localStorage.setItem('confisur_categories_cache', JSON.stringify(parsed));
+      return parsed;
     } catch {
       return DEFAULT_CATEGORIES;
     }
   }
   localStorage.setItem('confisur_dyn_categories', JSON.stringify(DEFAULT_CATEGORIES));
+  localStorage.setItem('confisur_categories_cache', JSON.stringify(DEFAULT_CATEGORIES));
   return DEFAULT_CATEGORIES;
 }
 
@@ -87,7 +93,9 @@ export async function addCategory(categoryName: string): Promise<string[]> {
   if (db) {
     try {
       await setDoc(doc(db, 'categories', trimmed), { createdAt: Date.now() });
-      return await fetchCategories();
+      const updated = await fetchCategories();
+      localStorage.setItem('confisur_categories_cache', JSON.stringify(updated));
+      return updated;
     } catch (e) {
       console.error("Error adding category to Firestore", e);
       throw e;
@@ -99,6 +107,7 @@ export async function addCategory(categoryName: string): Promise<string[]> {
   if (!current.includes(trimmed)) {
     const next = [...current, trimmed];
     localStorage.setItem('confisur_dyn_categories', JSON.stringify(next));
+    localStorage.setItem('confisur_categories_cache', JSON.stringify(next));
     return next;
   }
   return current;
@@ -108,7 +117,9 @@ export async function removeCategory(categoryName: string): Promise<string[]> {
   if (db) {
     try {
       await deleteDoc(doc(db, 'categories', categoryName));
-      return await fetchCategories();
+      const updated = await fetchCategories();
+      localStorage.setItem('confisur_categories_cache', JSON.stringify(updated));
+      return updated;
     } catch (e) {
       console.error("Error deleting category from Firestore", e);
       throw e;
@@ -119,6 +130,7 @@ export async function removeCategory(categoryName: string): Promise<string[]> {
   const current = await fetchCategories();
   const next = current.filter(c => c !== categoryName);
   localStorage.setItem('confisur_dyn_categories', JSON.stringify(next));
+  localStorage.setItem('confisur_categories_cache', JSON.stringify(next));
   return next;
 }
 
@@ -178,14 +190,30 @@ export async function fetchProducts(): Promise<Product[]> {
   if (db) {
     try {
       const snap = await getDocs(collection(db, 'products'));
+      
+      const configDocRef = doc(db, 'settings', 'config');
+      const configSnap = await getDoc(configDocRef).catch(() => null);
+      
       if (snap.empty) {
-        // Seed default products in firestore
-        for (const p of DEFAULT_PRODUCTS) {
-          await setDoc(doc(db, 'products', p.id), p);
+        if (!configSnap || !configSnap.exists()) {
+          // Seed default products in firestore
+          for (const p of DEFAULT_PRODUCTS) {
+            await setDoc(doc(db, 'products', p.id), p);
+          }
+          await setDoc(configDocRef, { initialized: true }).catch(() => null);
+          localStorage.setItem('confisur_products_cache', JSON.stringify(DEFAULT_PRODUCTS));
+          return DEFAULT_PRODUCTS;
+        } else {
+          localStorage.setItem('confisur_products_cache', JSON.stringify([]));
+          return [];
         }
-        return DEFAULT_PRODUCTS;
       }
-      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      
+      const prods = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      // Sort by createdAt descending
+      prods.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      localStorage.setItem('confisur_products_cache', JSON.stringify(prods));
+      return prods;
     } catch (e) {
       console.error("Error fetching products from Firestore", e);
     }
@@ -195,12 +223,15 @@ export async function fetchProducts(): Promise<Product[]> {
   const saved = localStorage.getItem('confisur_products');
   if (saved) {
     try {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      localStorage.setItem('confisur_products_cache', JSON.stringify(parsed));
+      return parsed;
     } catch {
       return DEFAULT_PRODUCTS;
     }
   }
   localStorage.setItem('confisur_products', JSON.stringify(DEFAULT_PRODUCTS));
+  localStorage.setItem('confisur_products_cache', JSON.stringify(DEFAULT_PRODUCTS));
   return DEFAULT_PRODUCTS;
 }
 
@@ -215,7 +246,14 @@ export async function addProduct(prod: Omit<Product, 'id' | 'createdAt'>): Promi
   if (db) {
     try {
       await setDoc(doc(db, 'products', newId), newProduct);
-      return await fetchProducts();
+      
+      // Ensure initialized config exists so default seeds never auto-restore
+      const configDocRef = doc(db, 'settings', 'config');
+      await setDoc(configDocRef, { initialized: true }).catch(() => null);
+
+      const latest = await fetchProducts();
+      localStorage.setItem('confisur_products_cache', JSON.stringify(latest));
+      return latest;
     } catch (e) {
       console.error("Error adding product to Firestore", e);
       throw e;
@@ -226,6 +264,7 @@ export async function addProduct(prod: Omit<Product, 'id' | 'createdAt'>): Promi
   const current = await fetchProducts();
   const next = [newProduct, ...current];
   localStorage.setItem('confisur_products', JSON.stringify(next));
+  localStorage.setItem('confisur_products_cache', JSON.stringify(next));
   return next;
 }
 
@@ -233,7 +272,14 @@ export async function deleteProduct(id: string): Promise<Product[]> {
   if (db) {
     try {
       await deleteDoc(doc(db, 'products', id));
-      return await fetchProducts();
+      
+      // Ensure initialized config exists so default seeds never auto-restore
+      const configDocRef = doc(db, 'settings', 'config');
+      await setDoc(configDocRef, { initialized: true }).catch(() => null);
+
+      const latest = await fetchProducts();
+      localStorage.setItem('confisur_products_cache', JSON.stringify(latest));
+      return latest;
     } catch (e) {
       console.error("Error deleting product from Firestore", e);
       throw e;
@@ -244,7 +290,28 @@ export async function deleteProduct(id: string): Promise<Product[]> {
   const current = await fetchProducts();
   const next = current.filter(p => p.id !== id);
   localStorage.setItem('confisur_products', JSON.stringify(next));
+  localStorage.setItem('confisur_products_cache', JSON.stringify(next));
   return next;
+}
+
+// Function to delete all products in the database
+export async function clearAllProducts(): Promise<void> {
+  if (db) {
+    try {
+      const snap = await getDocs(collection(db, 'products'));
+      for (const d of snap.docs) {
+        await deleteDoc(doc(db, 'products', d.id));
+      }
+      const configDocRef = doc(db, 'settings', 'config');
+      await setDoc(configDocRef, { initialized: true }).catch(() => null);
+    } catch (e) {
+      console.error("Error clearing all products from Firestore", e);
+      throw e;
+    }
+  } else {
+    localStorage.setItem('confisur_products', JSON.stringify([]));
+  }
+  localStorage.setItem('confisur_products_cache', JSON.stringify([]));
 }
 
 // Function to enable real-time listener if client supports it
@@ -253,6 +320,9 @@ export function subscribeProducts(onUpdate: (prods: Product[]) => void) {
     const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
       const prods = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      // Keep descending order by creation date
+      prods.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      localStorage.setItem('confisur_products_cache', JSON.stringify(prods));
       onUpdate(prods);
     }, (error) => {
       console.error("Error subscribing to real-time products", error);

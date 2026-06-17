@@ -10,6 +10,7 @@ interface AdminPanelProps {
   categories: string[];
   onAddProduct: (product: Omit<Product, 'id' | 'createdAt'>) => void;
   onDeleteProduct: (id: string) => void;
+  onClearAllProducts: () => void;
   onAddCategory: (category: string) => void;
   onDeleteCategory: (category: string) => void;
 }
@@ -21,6 +22,7 @@ export function AdminPanel({
   categories,
   onAddProduct, 
   onDeleteProduct,
+  onClearAllProducts,
   onAddCategory,
   onDeleteCategory
 }: AdminPanelProps) {
@@ -28,6 +30,49 @@ export function AdminPanel({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+
+  // Custom modal states to replace browser alert/confirm
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const [alertState, setAlertState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: ''
+  });
+
+  const triggerConfirm = (title: string, message: string, onConfirmAction: () => void) => {
+    setConfirmState({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: () => {
+        onConfirmAction();
+        setConfirmState(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+
+  const triggerAlert = (title: string, message: string) => {
+    setAlertState({
+      isOpen: true,
+      title,
+      message
+    });
+  };
 
   // Form states for new product
   const [newName, setNewName] = useState('');
@@ -115,7 +160,7 @@ export function AdminPanel({
   const handleSubmitProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName || !newImageUrl) {
-      alert('Por favor, completa todos los campos del producto, incluyendo la imagen.');
+      triggerAlert('Faltan Datos', 'Por favor, completa todos los campos del producto, incluyendo la imagen.');
       return;
     }
 
@@ -142,7 +187,7 @@ export function AdminPanel({
     if (!trimmed) return;
 
     if (categories.includes(trimmed)) {
-      alert('Esta categoría ya existe.');
+      triggerAlert('Categoría Existente', 'Esta categoría ya existe en tu catálogo.');
       return;
     }
 
@@ -423,9 +468,11 @@ export function AdminPanel({
                             <button
                               type="button"
                               onClick={() => {
-                                if (confirm(`¿Estás seguro de eliminar la categoría "${cat}"? Los productos en ella ya no saldrán en las pestañas principales.`)) {
-                                  onDeleteCategory(cat);
-                                }
+                                triggerConfirm(
+                                  "Eliminar Categoría",
+                                  `¿Estás seguro de eliminar la categoría "${cat}"? Los productos en ella ya no saldrán en las pestañas principales.`,
+                                  () => onDeleteCategory(cat)
+                                );
                               }}
                               className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors cursor-pointer"
                               title="Eliminar Categoría"
@@ -442,17 +489,39 @@ export function AdminPanel({
                 {/* COLUMN 2: LIST & MANAGE PRODUCTS */}
                 <div className="lg:col-span-7 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                       <h3 className="font-display font-black text-lg text-zinc-800 dark:text-zinc-100">
                         Productos ({products.length})
                       </h3>
-                      <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-1.5 py-1.5 px-3 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 text-red-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                      >
-                        <LogOut className="w-3.5 h-3.5" />
-                        Cerrar Sesión
-                      </button>
+                      
+                      <div className="flex items-center gap-2">
+                        {products.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              triggerConfirm(
+                                "⚠️ VACIAR TODO EL CATÁLOGO",
+                                "¿Estás completamente seguro de que deseas eliminar ABSOLUTAMENTE TODOS los productos? Esta acción vaciará el catálogo entero para que puedas subir tu propia mercadería.",
+                                () => {
+                                  onClearAllProducts();
+                                }
+                              );
+                            }}
+                            className="flex items-center gap-1.5 py-1.5 px-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm shadow-red-500/10"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Vaciar Catálogo
+                          </button>
+                        )}
+                        
+                        <button
+                          onClick={handleLogout}
+                          className="flex items-center gap-1.5 py-1.5 px-3 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 text-red-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          Cerrar Sesión
+                        </button>
+                      </div>
                     </div>
 
                     <div className="overflow-y-auto max-h-[460px] pr-2 space-y-2 no-scrollbar">
@@ -492,9 +561,11 @@ export function AdminPanel({
                             <button
                               id={`delete-product-${prod.id}`}
                               onClick={() => {
-                                if (confirm(`¿Seguro que deseas eliminar "${prod.name}" del catálogo?`)) {
-                                  onDeleteProduct(prod.id);
-                                }
+                                triggerConfirm(
+                                  "Eliminar Producto",
+                                  `¿Seguro que deseas eliminar "${prod.name}" del catálogo? Esta acción no se puede deshacer.`,
+                                  () => onDeleteProduct(prod.id)
+                                );
                               }}
                               className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 text-red-500 hover:text-red-600 rounded-xl transition-colors cursor-pointer"
                               title="Remover Producto"
@@ -519,6 +590,93 @@ export function AdminPanel({
           </AnimatePresence>
         </div>
       </motion.div>
+
+      {/* Custom Confirmation Popup on Top */}
+      <AnimatePresence>
+        {confirmState.isOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/70 backdrop-blur-xs" 
+              onClick={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              className="relative w-full max-w-sm bg-white dark:bg-zinc-900 border border-orange-100 dark:border-zinc-800 rounded-[28px] p-6 shadow-2xl z-10 text-center"
+            >
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-950/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6 w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="font-display font-black text-lg text-zinc-850 dark:text-zinc-50 mb-2">
+                {confirmState.title}
+              </h3>
+              <p className="text-zinc-500 dark:text-zinc-400 text-xs leading-relaxed mb-6">
+                {confirmState.message}
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-750 text-zinc-700 dark:text-zinc-250 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmState.onConfirm}
+                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-xs shadow-md shadow-red-500/10 transition-colors cursor-pointer"
+                >
+                  Sí, Eliminar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Alert Popup on Top */}
+      <AnimatePresence>
+        {alertState.isOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/70 backdrop-blur-xs" 
+              onClick={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              className="relative w-full max-w-sm bg-white dark:bg-zinc-900 border border-orange-100 dark:border-zinc-800 rounded-[28px] p-6 shadow-2xl z-10 text-center"
+            >
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-950/20 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Tag className="w-6 h-6 text-amber-500" />
+              </div>
+              <h3 className="font-display font-black text-lg text-zinc-850 dark:text-zinc-50 mb-2">
+                {alertState.title}
+              </h3>
+              <p className="text-zinc-500 dark:text-zinc-400 text-xs leading-relaxed mb-6">
+                {alertState.message}
+              </p>
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+                  className="px-6 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Entendido
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

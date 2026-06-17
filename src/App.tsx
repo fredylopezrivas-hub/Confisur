@@ -15,7 +15,8 @@ import {
   fetchCategories, 
   addCategory, 
   removeCategory,
-  subscribeProducts
+  subscribeProducts,
+  clearAllProducts
 } from './lib/firebase';
 import { 
   Search, 
@@ -36,9 +37,25 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
-  // Load products and custom categories from firebase or defaults
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  // Load products and custom categories from firebase or defaults with instant cache hydration
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const cached = localStorage.getItem('confisur_products_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [categories, setCategories] = useState<string[]>(() => {
+    try {
+      const cached = localStorage.getItem('confisur_categories_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [isDbLoaded, setIsDbLoaded] = useState(false);
 
   // Dark Mode state (Predeterminado: Modo Blanco / Claro)
@@ -125,23 +142,78 @@ export default function App() {
 
   // Handle adding newly adapted products
   const handleAddProduct = async (newProdData: Omit<Product, 'id' | 'createdAt'>) => {
+    // Generate an optimistic ID so it renders instantly
+    const tempId = 'prod-temp-' + Date.now();
+    const tempProduct: Product = {
+      ...newProdData,
+      id: tempId,
+      createdAt: Date.now()
+    };
+
+    // Update UI instantly
+    setProducts(prev => {
+      const next = [tempProduct, ...prev];
+      localStorage.setItem('confisur_products_cache', JSON.stringify(next));
+      return next;
+    });
+
     try {
       const updatedList = await addProduct(newProdData);
       setProducts(updatedList);
     } catch (e: any) {
       console.error(e);
-      alert("❌ Error al guardar en Firebase:\n\nEsto suele pasar si las 'Reglas de Seguridad' (Security Rules) en tu Consola de Firebase están bloqueando las escrituras.\n\nAsegúrate de copiar y publicar las reglas sugeridas (allow read, write: if true;) en tu panel de Firebase.");
+      // Revert optimism if it failed
+      setProducts(prev => {
+        const next = prev.filter(p => p.id !== tempId);
+        localStorage.setItem('confisur_products_cache', JSON.stringify(next));
+        return next;
+      });
+      alert("❌ Error al guardar en Firebase:\n\nTu base de datos Firebase personal rechazó la escritura. Esto pasa si tus 'Reglas de Seguridad' (Security Rules) en Firebase Console no permiten escribir.\n\nPara solucionarlo:\n1. Ve a console.firebase.google.com\n2. Consola de Cloud Firestore -> pestaña de 'Rules' (Reglas)\n3. Configúralas de forma abierta:\n\nallow read, write: if true;");
     }
   };
 
   // Handle product deletion
   const handleDeleteProduct = async (id: string) => {
+    // Save previous state for rollback
+    let previousProducts: Product[] = [];
+    setProducts(prev => {
+      previousProducts = prev;
+      const next = prev.filter(p => p.id !== id);
+      localStorage.setItem('confisur_products_cache', JSON.stringify(next));
+      return next;
+    });
+
     try {
       const updatedList = await deleteProduct(id);
       setProducts(updatedList);
     } catch (e: any) {
       console.error(e);
-      alert("❌ Error al eliminar en Firebase:\n\nEsto suele pasar si las 'Reglas de Seguridad' (Security Rules) de Firestore están bloqueando las escrituras.\n\nAsegúrate de actualizar tus reglas a modo público (allow read, write: if true;) temporalmente.");
+      // Rollback to previous state
+      setProducts(previousProducts);
+      localStorage.setItem('confisur_products_cache', JSON.stringify(previousProducts));
+      alert("❌ Error al eliminar en Firebase:\n\nTu base de datos Firebase personal rechazó borrar el producto. Esto pasa si tus reglas de seguridad están activas en modo restrictivo.\n\nPara solucionarlo:\n1. Ve a console.firebase.google.com -> selecciona tu proyecto 'confisur-113cb'\n2. Firestore Database -> pestaña de 'Rules' (Reglas)\n3. Cámbialas a:\n\nallow read, write: if true;");
+    }
+  };
+
+  // Handle clearing all products at once from catalog
+  const handleClearAllProducts = async () => {
+    // Save previous state for rollback
+    let previousProducts: Product[] = [];
+    setProducts(prev => {
+      previousProducts = prev;
+      localStorage.setItem('confisur_products_cache', JSON.stringify([]));
+      return [];
+    });
+
+    try {
+      await clearAllProducts();
+      setProducts([]);
+    } catch (e: any) {
+      console.error(e);
+      // Rollback to previous state
+      setProducts(previousProducts);
+      localStorage.setItem('confisur_products_cache', JSON.stringify(previousProducts));
+      alert("❌ Error al vaciar el catálogo en Firebase:\n\nLa base de datos Firebase personal rechazó la operación de borrado masivo por temas de Reglas de Seguridad.\n\nPara solucionarlo:\n1. Ve a console.firebase.google.com -> proyecto 'confisur-113cb'\n2. Firestore Database -> pestaña 'Rules' (Reglas)\n3. Copia e ingresa las reglas públicas:\n\nallow read, write: if true;");
     }
   };
 
@@ -442,8 +514,33 @@ export default function App() {
       {/* PRODUCT DISPLAY BODY */}
       <main id="catalog-products-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
-        {/* If products are 0 (e.g. empty and category with 0 products) */}
-        {filteredProducts.length === 0 ? (
+        {/* If products are still fetching and there's no cached data */}
+        {!isDbLoaded && products.length === 0 ? (
+          <div>
+            <div className="flex items-center justify-between mb-4 animate-pulse">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 bg-orange-400 rounded-full" />
+                <div className="w-40 h-6 bg-zinc-200 dark:bg-zinc-800 rounded-lg" />
+              </div>
+              <div className="w-32 h-4 bg-zinc-150 dark:bg-zinc-850 rounded-lg" />
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 py-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div 
+                  key={i} 
+                  className="bg-white dark:bg-zinc-900 rounded-[24px] border border-orange-50/70 dark:border-zinc-800/80 overflow-hidden flex flex-col justify-between animate-pulse"
+                >
+                  <div className="w-full aspect-[4/5] bg-orange-50/10 dark:bg-zinc-800/30" />
+                  <div className="p-3.5 space-y-2 flex-grow flex flex-col justify-between">
+                    <div className="w-4/5 h-4 bg-zinc-200 dark:bg-zinc-850 rounded" />
+                    <div className="w-2/5 h-3 bg-zinc-150 dark:bg-zinc-800 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : filteredProducts.length === 0 ? (
           <div className="text-center py-24 bg-white dark:bg-zinc-900 rounded-[32px] p-8 shadow-sm border border-dashed border-orange-105 dark:border-zinc-800">
             <span className="text-5xl">🍭</span>
             <h3 className="font-display font-black text-xl text-zinc-700 dark:text-zinc-300 mt-4">
@@ -671,6 +768,7 @@ export default function App() {
         categories={categories}
         onAddProduct={handleAddProduct}
         onDeleteProduct={handleDeleteProduct}
+        onClearAllProducts={handleClearAllProducts}
         onAddCategory={handleAddCategory}
         onDeleteCategory={handleDeleteCategory}
       />
