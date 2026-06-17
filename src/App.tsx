@@ -22,7 +22,9 @@ import {
   fetchCategoriesWithSections,
   addCategoryWithSections,
   removeCategoryWithSections,
-  saveCategorySections
+  saveCategorySections,
+  safeSetItem,
+  saveProductsCache
 } from './lib/firebase';
 import { 
   Search, 
@@ -93,6 +95,43 @@ export default function App() {
 
   // Popup states
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+
+  // Safari / iOS WebView Detection and Recommendation Banner
+  const [showSafariAdvice, setShowSafariAdvice] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  useEffect(() => {
+    try {
+      const ua = navigator.userAgent || '';
+      const isIOS = /iPad|iPhone|iPod/.test(ua);
+      const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|Android/.test(ua);
+      const isInstagramOrFb = /Instagram|FBAN|FBAV/.test(ua);
+      
+      if (isSafari || isIOS || isInstagramOrFb) {
+        const dismissed = sessionStorage.getItem('dismissed_safari_advice');
+        if (!dismissed) {
+          setShowSafariAdvice(true);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  const handleCopyLink = () => {
+    try {
+      navigator.clipboard.writeText(window.location.href);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 3000);
+    } catch {
+      alert("Enlace copiado: " + window.location.href);
+    }
+  };
+
+  const handleOpenInChrome = () => {
+    const currentUrl = window.location.href.replace(/^https?:\/\//, '');
+    window.location.href = `googlechrome://${currentUrl}`;
+  };
 
   // References for dragging products carousel
   const carouselRef = useRef<HTMLDivElement>(null);
@@ -165,7 +204,7 @@ export default function App() {
     } else {
       root.classList.remove('dark');
     }
-    localStorage.setItem('confisur_darkmode_v2', String(isDarkMode));
+    safeSetItem('confisur_darkmode_v2', String(isDarkMode));
   }, [isDarkMode]);
 
   // Handle adding newly adapted products
@@ -181,7 +220,7 @@ export default function App() {
     // Update UI instantly
     setProducts(prev => {
       const next = [tempProduct, ...prev];
-      localStorage.setItem('confisur_products_cache', JSON.stringify(next));
+      saveProductsCache(next);
       return next;
     });
 
@@ -193,7 +232,7 @@ export default function App() {
       // Revert optimism if it failed
       setProducts(prev => {
         const next = prev.filter(p => p.id !== tempId);
-        localStorage.setItem('confisur_products_cache', JSON.stringify(next));
+        saveProductsCache(next);
         return next;
       });
       alert("❌ Error al guardar en Firebase:\n\nTu base de datos Firebase personal rechazó la escritura. Esto pasa si tus 'Reglas de Seguridad' (Security Rules) en Firebase Console no permiten escribir.\n\nPara solucionarlo:\n1. Ve a console.firebase.google.com\n2. Consola de Cloud Firestore -> pestaña de 'Rules' (Reglas)\n3. Configúralas de forma abierta:\n\nallow read, write: if true;");
@@ -207,7 +246,7 @@ export default function App() {
     setProducts(prev => {
       previousProducts = prev;
       const next = prev.filter(p => p.id !== id);
-      localStorage.setItem('confisur_products_cache', JSON.stringify(next));
+      saveProductsCache(next);
       return next;
     });
 
@@ -218,7 +257,7 @@ export default function App() {
       console.error(e);
       // Rollback to previous state
       setProducts(previousProducts);
-      localStorage.setItem('confisur_products_cache', JSON.stringify(previousProducts));
+      saveProductsCache(previousProducts);
       alert("❌ Error al eliminar en Firebase:\n\nTu base de datos Firebase personal rechazó borrar el producto. Esto pasa si tus reglas de seguridad están activas en modo restrictivo.\n\nPara solucionarlo:\n1. Ve a console.firebase.google.com -> selecciona tu proyecto 'confisur-113cb'\n2. Firestore Database -> pestaña de 'Rules' (Reglas)\n3. Cámbialas a:\n\nallow read, write: if true;");
     }
   };
@@ -229,7 +268,7 @@ export default function App() {
     let previousProducts: Product[] = [];
     setProducts(prev => {
       previousProducts = prev;
-      localStorage.setItem('confisur_products_cache', JSON.stringify([]));
+      saveProductsCache([]);
       return [];
     });
 
@@ -240,7 +279,7 @@ export default function App() {
       console.error(e);
       // Rollback to previous state
       setProducts(previousProducts);
-      localStorage.setItem('confisur_products_cache', JSON.stringify(previousProducts));
+      saveProductsCache(previousProducts);
       alert("❌ Error al vaciar el catálogo en Firebase:\n\nLa base de datos Firebase personal rechazó la operación de borrado masivo por temas de Reglas de Seguridad.\n\nPara solucionarlo:\n1. Ve a console.firebase.google.com -> proyecto 'confisur-113cb'\n2. Firestore Database -> pestaña 'Rules' (Reglas)\n3. Copia e ingresa las reglas públicas:\n\nallow read, write: if true;");
     }
   };
@@ -338,6 +377,49 @@ export default function App() {
   return (
     <div className="min-h-screen bg-orange-50/20 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-100 selection:bg-orange-200">
       
+      {/* SAFARI/WEBVIEW PERFORMANCE ADVICE BANNER */}
+      <AnimatePresence>
+        {showSafariAdvice && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="relative z-50 bg-gradient-to-r from-orange-600 via-amber-655 to-orange-700 text-white text-xs py-3.5 px-4 shadow-md border-b border-orange-500/25 font-display flex flex-wrap items-center justify-between gap-3 text-center sm:text-left"
+          >
+            <div className="flex items-center gap-2 max-w-3xl mx-auto sm:mx-0">
+              <span className="text-sm">⚡</span>
+              <p className="leading-relaxed font-semibold">
+                ¡Navegación óptima! Para ver con máxima rapidez y fluidez las <span className="font-extrabold text-amber-205">4,000+ imágenes</span> y dulces de nuestro catálogo, te recomendamos abrir esta página en <span className="underline decoration-wavy text-amber-200 font-bold">Google Chrome</span>.
+              </p>
+            </div>
+            <div className="flex items-center gap-2.5 mx-auto sm:mx-0">
+              <button
+                onClick={handleOpenInChrome}
+                className="bg-white/20 hover:bg-white/30 text-white font-bold py-1 px-3 rounded-lg text-[11px] transition-all flex items-center gap-1 active:scale-95 border border-white/25 cursor-pointer"
+              >
+                🚀 Abrir en Chrome
+              </button>
+              <button
+                onClick={handleCopyLink}
+                className="bg-zinc-950/25 hover:bg-zinc-950/45 text-white font-medium py-1 px-2.5 rounded-lg text-[11px] transition-all flex items-center gap-1 cursor-pointer"
+              >
+                {copiedLink ? '✓ Copiado' : '📋 Copiar Enlace'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowSafariAdvice(false);
+                  sessionStorage.setItem('dismissed_safari_advice', 'true');
+                }}
+                className="p-1 hover:bg-white/10 rounded-full transition-colors ml-1 cursor-pointer"
+                aria-label="Cerrar"
+              >
+                <X className="w-4 h-4 text-white/90" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* GLOWING ORANGE HEADER DECORATION */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-orange-400/15 dark:bg-orange-500/5 blur-[100px] rounded-full pointer-events-none" />
       <div className="absolute top-10 right-1/4 w-80 h-80 bg-amber-300/20 dark:bg-amber-400/5 blur-[120px] rounded-full pointer-events-none" />

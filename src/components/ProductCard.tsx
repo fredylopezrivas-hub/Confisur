@@ -31,17 +31,19 @@ export function ProductCard({ product }: ProductCardProps) {
         </div>
 
         {/* Blurred Backdrop */}
-        <img
-          src={product.imageUrl}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover blur-md opacity-30 select-none pointer-events-none"
-          referrerPolicy="no-referrer"
-          loading="lazy"
-        />
+        {product.imageUrl ? (
+          <img
+            src={product.imageUrl}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover blur-md opacity-30 select-none pointer-events-none"
+            referrerPolicy="no-referrer"
+            loading="lazy"
+          />
+        ) : null}
 
         {/* Main Photo (Fully fitted vertically and horizontally) */}
         <img
-          src={product.imageUrl}
+          src={product.imageUrl || 'https://images.unsplash.com/photo-1581798459219-318e76aecc7b?q=80&w=600&auto=format&fit=crop'}
           alt={product.name}
           className="relative z-10 max-w-full max-h-full object-contain p-2 select-none pointer-events-none transition-transform duration-500 group-hover:scale-105"
           referrerPolicy="no-referrer"

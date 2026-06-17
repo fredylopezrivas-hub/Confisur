@@ -700,7 +700,7 @@ export function AdminPanel({
                           >
                             <div className="flex items-center gap-3">
                               <img
-                                src={prod.imageUrl}
+                                src={prod.imageUrl || 'https://images.unsplash.com/photo-1581798459219-318e76aecc7b?q=80&w=600&auto=format&fit=crop'}
                                 alt={prod.name}
                                 className="w-10 h-14 object-cover rounded-lg bg-orange-50/50"
                                 referrerPolicy="no-referrer"
