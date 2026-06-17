@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Product } from '../types';
-import { X, Plus, Trash2, LogOut, Upload, KeyRound, User, CheckCircle, FolderPlus, Tag } from 'lucide-react';
+import { Product, CategoryWithSections } from '../types';
+import { X, Plus, Trash2, LogOut, Upload, KeyRound, User, CheckCircle, FolderPlus, Tag, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface AdminPanelProps {
@@ -8,11 +8,13 @@ interface AdminPanelProps {
   onClose: () => void;
   products: Product[];
   categories: string[];
+  categoriesWithSections?: CategoryWithSections[];
   onAddProduct: (product: Omit<Product, 'id' | 'createdAt'>) => void;
   onDeleteProduct: (id: string) => void;
   onClearAllProducts: () => void;
   onAddCategory: (category: string) => void;
   onDeleteCategory: (category: string) => void;
+  onSaveCategorySections?: (categoryName: string, sections: string[]) => void;
 }
 
 export function AdminPanel({ 
@@ -20,11 +22,13 @@ export function AdminPanel({
   onClose, 
   products, 
   categories,
+  categoriesWithSections = [],
   onAddProduct, 
   onDeleteProduct,
   onClearAllProducts,
   onAddCategory,
-  onDeleteCategory
+  onDeleteCategory,
+  onSaveCategorySections
 }: AdminPanelProps) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [username, setUsername] = useState('');
@@ -77,6 +81,7 @@ export function AdminPanel({
   // Form states for new product
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState<string>('');
+  const [newSection, setNewSection] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
   const [previewError, setPreviewError] = useState(false);
   const [formSuccess, setFormSuccess] = useState(false);
@@ -85,12 +90,26 @@ export function AdminPanel({
   const [newCategoryName, setNewCategoryName] = useState('');
   const [catSuccess, setCatSuccess] = useState(false);
 
+  // Expand states for subcategory sections
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [categorySectionsInputs, setCategorySectionsInputs] = useState<Record<string, string>>({});
+
   // Set default category selection when dynamic categories change or mount
   React.useEffect(() => {
     if (categories.length > 0 && !newCategory) {
       setNewCategory(categories[0]);
     }
   }, [categories, newCategory]);
+
+  // Handle section auto-preselection when category rotates
+  React.useEffect(() => {
+    const activeCatInfo = categoriesWithSections.find(c => c.name === newCategory);
+    if (activeCatInfo && activeCatInfo.sections && activeCatInfo.sections.length > 0) {
+      setNewSection(activeCatInfo.sections[0]);
+    } else {
+      setNewSection('');
+    }
+  }, [newCategory, categoriesWithSections]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,6 +176,36 @@ export function AdminPanel({
     }
   };
 
+  const handleAddSectionToCategory = (catName: string) => {
+    const sectionName = (categorySectionsInputs[catName] || '').trim();
+    if (!sectionName) return;
+
+    const currentWS = categoriesWithSections.find(c => c.name === catName);
+    const existingSections = currentWS ? currentWS.sections : [];
+
+    if (existingSections.includes(sectionName)) {
+      triggerAlert('Sección Existente', `La sección "${sectionName}" ya existe en esta categoría.`);
+      return;
+    }
+
+    const updatedSections = [...existingSections, sectionName];
+    onSaveCategorySections?.(catName, updatedSections);
+
+    // Reset input
+    setCategorySectionsInputs(prev => ({
+      ...prev,
+      [catName]: ''
+    }));
+  };
+
+  const handleRemoveSectionFromCategory = (catName: string, sectionName: string) => {
+    const currentWS = categoriesWithSections.find(c => c.name === catName);
+    if (!currentWS) return;
+
+    const updatedSections = currentWS.sections.filter(s => s !== sectionName);
+    onSaveCategorySections?.(catName, updatedSections);
+  };
+
   const handleSubmitProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName || !newImageUrl) {
@@ -172,11 +221,19 @@ export function AdminPanel({
       price: 0, // Price is no longer needed/shown in catalog
       category: catToUse,
       imageUrl: newImageUrl,
+      section: newSection || undefined,
     });
 
     // Reset Form
     setNewName('');
     setNewImageUrl('');
+    // reset chosen section
+    const activeCatInfo = categoriesWithSections.find(c => c.name === catToUse);
+    if (activeCatInfo && activeCatInfo.sections && activeCatInfo.sections.length > 0) {
+      setNewSection(activeCatInfo.sections[0]);
+    } else {
+      setNewSection('');
+    }
     setFormSuccess(true);
     setTimeout(() => setFormSuccess(false), 3000);
   };
@@ -201,16 +258,17 @@ export function AdminPanel({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        {/* Backdrop */}
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 30 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 30 }}
-        className="relative w-full max-w-4xl bg-orange-50/90 dark:bg-zinc-950/95 backdrop-blur-md rounded-[32px] overflow-hidden shadow-2xl z-10 border border-orange-200 dark:border-zinc-800 flex flex-col max-h-[90vh]"
-      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 30 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 30 }}
+          className="relative w-full max-w-4xl bg-orange-50/90 dark:bg-zinc-950/95 backdrop-blur-md rounded-[32px] overflow-hidden shadow-2xl z-10 border border-orange-200 dark:border-zinc-800 flex flex-col max-h-[90vh]"
+        >
         {/* Header */}
         <div className="p-6 bg-gradient-to-r from-orange-500 to-amber-500 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -354,6 +412,33 @@ export function AdminPanel({
                         </select>
                       </div>
 
+                      {/* Section (sub-category) select dropdown */}
+                      {(() => {
+                        const activeCatInfo = categoriesWithSections.find(c => c.name === newCategory);
+                        if (!activeCatInfo || !activeCatInfo.sections || activeCatInfo.sections.length === 0) return null;
+                        return (
+                          <div>
+                            <label className="block text-xs font-semibold text-zinc-500 mb-1 flex items-center justify-between">
+                              <span>Sección / Subcategoría <span className="text-[10px] text-zinc-400 font-normal">(Opcional)</span></span>
+                              <span className="text-[10px] bg-amber-100 dark:bg-zinc-800 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded">Activo</span>
+                            </label>
+                            <select
+                              id="product-input-section"
+                              value={newSection}
+                              onChange={(e) => setNewSection(e.target.value)}
+                              className="w-full px-3 py-2.5 rounded-xl bg-orange-50/20 dark:bg-zinc-950 border border-orange-100 dark:border-zinc-800 text-zinc-800 dark:text-zinc-105 focus:outline-none focus:ring-2 focus:ring-orange-400 text-xs font-semibold"
+                            >
+                              <option value="">-- Sin Sección (Ninguna) --</option>
+                              {activeCatInfo.sections.map((sec) => (
+                                <option key={sec} value={sec}>
+                                  {sec}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })()}
+
                       {/* Image Upload Area */}
                       <div>
                         <label className="block text-xs font-semibold text-zinc-500 mb-1.5">
@@ -453,36 +538,114 @@ export function AdminPanel({
                       </button>
                     </form>
 
-                    {/* Categories tag list with delete */}
-                    <div className="space-y-1.5 max-h-[120px] overflow-y-auto no-scrollbar">
-                      {categories.map((cat) => (
-                        <div 
-                          key={cat} 
-                          className="flex items-center justify-between p-2 rounded-xl bg-orange-50/20 dark:bg-zinc-950 border border-orange-100/10 dark:border-zinc-850"
-                        >
-                          <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-350 flex items-center gap-1.5">
-                            <Tag className="w-3.5 h-3.5 text-amber-500" />
-                            {cat}
-                          </span>
-                          {categories.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                triggerConfirm(
-                                  "Eliminar Categoría",
-                                  `¿Estás seguro de eliminar la categoría "${cat}"? Los productos en ella ya no saldrán en las pestañas principales.`,
-                                  () => onDeleteCategory(cat)
-                                );
-                              }}
-                              className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors cursor-pointer"
-                              title="Eliminar Categoría"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                     {/* Categories tag list with delete */}
+                     <div className="space-y-2 max-h-[350px] overflow-y-auto no-scrollbar pt-1">
+                       {categories.map((cat) => {
+                         const isExpanded = !!expandedCategories[cat];
+                         const catWS = categoriesWithSections.find(c => c.name === cat);
+                         const sectionsList = catWS ? catWS.sections || [] : [];
+                         const secCount = sectionsList.length;
+
+                         return (
+                           <div 
+                             key={cat} 
+                             className="flex flex-col p-2.5 rounded-xl bg-orange-50/10 dark:bg-zinc-950/40 border border-orange-100/15 dark:border-zinc-850"
+                           >
+                             <div className="flex items-center justify-between gap-1.5">
+                               <button
+                                 type="button"
+                                 onClick={() => {
+                                   setExpandedCategories(prev => ({
+                                     ...prev,
+                                     [cat]: !prev[cat]
+                                   }));
+                                 }}
+                                 className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:text-orange-500 cursor-pointer flex-grow text-left"
+                               >
+                                 <Tag className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                                 <span className="truncate">{cat}</span>
+                                 <span className="text-[9px] bg-orange-100 dark:bg-zinc-800 text-orange-700 dark:text-orange-350 px-1.5 py-0.2 rounded font-bold flex-shrink-0">
+                                   {secCount}
+                                 </span>
+                                 {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />}
+                               </button>
+
+                               {categories.length > 1 && (
+                                 <button
+                                   type="button"
+                                   onClick={() => {
+                                     triggerConfirm(
+                                       "Eliminar Categoría",
+                                       `¿Estás seguro de eliminar la categoría "${cat}"? Los productos en ella ya no saldrán en las pestañas principales.`,
+                                       () => onDeleteCategory(cat)
+                                     );
+                                   }}
+                                   className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors cursor-pointer flex-shrink-0"
+                                   title="Eliminar Categoría"
+                                 >
+                                   <Trash2 className="w-3.5 h-3.5" />
+                                 </button>
+                               )}
+                             </div>
+
+                             {/* Expanded Subsections Panel */}
+                             {isExpanded && (
+                               <div className="mt-2.5 pl-3.5 border-l border-orange-250 dark:border-zinc-800 space-y-2 py-1">
+                                 {/* Subcategory sections list */}
+                                 {secCount === 0 ? (
+                                   <p className="text-[10px] text-zinc-400 dark:text-zinc-550 italic pb-0.5">
+                                     Sin secciones aún (ej: chocolates, ácidos).
+                                   </p>
+                                 ) : (
+                                   <div className="flex flex-wrap gap-1 pb-1">
+                                     {sectionsList.map((sec) => (
+                                       <span 
+                                         key={sec} 
+                                         className="inline-flex items-center gap-1 text-[10px] font-semibold bg-amber-50 dark:bg-zinc-800 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded-lg border border-amber-100/30"
+                                       >
+                                         <span className="truncate max-w-[85px]">{sec}</span>
+                                         <button
+                                           type="button"
+                                           onClick={() => handleRemoveSectionFromCategory(cat, sec)}
+                                           className="p-0.5 text-zinc-400 hover:text-red-500 rounded transition-colors cursor-pointer"
+                                           title="Borrar Sección"
+                                         >
+                                           <X className="w-2.5 h-2.5" />
+                                         </button>
+                                       </span>
+                                     ))}
+                                   </div>
+                                 )}
+
+                                 {/* Form to append section */}
+                                 <div className="flex gap-1">
+                                   <input
+                                     type="text"
+                                     placeholder="Ej: Chocolates"
+                                     value={categorySectionsInputs[cat] || ''}
+                                     onChange={(e) => setCategorySectionsInputs(prev => ({ ...prev, [cat]: e.target.value }))}
+                                     onKeyDown={(e) => {
+                                       if (e.key === 'Enter') {
+                                         e.preventDefault();
+                                         handleAddSectionToCategory(cat);
+                                       }
+                                     }}
+                                     className="flex-grow px-2 py-1.5 bg-white dark:bg-zinc-900 border border-orange-100/40 dark:border-zinc-800 text-zinc-800 dark:text-zinc-150 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-orange-450"
+                                   />
+                                   <button
+                                     type="button"
+                                     onClick={() => handleAddSectionToCategory(cat)}
+                                     className="px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-0.5"
+                                   >
+                                     <Plus className="w-3 h-3" /> Añadir
+                                   </button>
+                                 </div>
+                               </div>
+                             )}
+                           </div>
+                         );
+                       })}
+                     </div>
                   </div>
                 </div>
 
@@ -590,11 +753,12 @@ export function AdminPanel({
           </AnimatePresence>
         </div>
       </motion.div>
+    </div>
 
       {/* Custom Confirmation Popup on Top */}
       <AnimatePresence>
         {confirmState.isOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -609,7 +773,7 @@ export function AdminPanel({
               className="relative w-full max-w-sm bg-white dark:bg-zinc-900 border border-orange-100 dark:border-zinc-800 rounded-[28px] p-6 shadow-2xl z-10 text-center"
             >
               <div className="w-12 h-12 bg-red-100 dark:bg-red-950/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="w-6 h-6 w-6 h-6 text-red-500" />
+                <Trash2 className="w-6 h-6 text-red-500" />
               </div>
               <h3 className="font-display font-black text-lg text-zinc-850 dark:text-zinc-50 mb-2">
                 {confirmState.title}
@@ -641,7 +805,7 @@ export function AdminPanel({
       {/* Custom Alert Popup on Top */}
       <AnimatePresence>
         {alertState.isOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -677,6 +841,6 @@ export function AdminPanel({
           </div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }

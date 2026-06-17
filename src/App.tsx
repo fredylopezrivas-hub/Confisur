@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Category } from './types';
+import { Product, Category, CategoryWithSections } from './types';
 import { ProductCard } from './components/ProductCard';
 import { AdminPanel } from './components/AdminPanel';
 import { SedesContacts } from './components/SedesContacts';
@@ -16,7 +16,13 @@ import {
   addCategory, 
   removeCategory,
   subscribeProducts,
-  clearAllProducts
+  clearAllProducts,
+  DEFAULT_PRODUCTS,
+  DEFAULT_CATEGORIES,
+  fetchCategoriesWithSections,
+  addCategoryWithSections,
+  removeCategoryWithSections,
+  saveCategorySections
 } from './lib/firebase';
 import { 
   Search, 
@@ -32,7 +38,8 @@ import {
   SlidersHorizontal,
   Layers,
   Heart,
-  X
+  X,
+  Tag
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -41,20 +48,32 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const cached = localStorage.getItem('confisur_products_cache');
-      return cached ? JSON.parse(cached) : [];
+      // If there's an explicit setting or configuration initialized, prioritize cached state
+      return cached ? JSON.parse(cached) : DEFAULT_PRODUCTS;
     } catch {
-      return [];
+      return DEFAULT_PRODUCTS;
     }
   });
 
   const [categories, setCategories] = useState<string[]>(() => {
     try {
       const cached = localStorage.getItem('confisur_categories_cache');
-      return cached ? JSON.parse(cached) : [];
+      return cached ? JSON.parse(cached) : DEFAULT_CATEGORIES;
     } catch {
-      return [];
+      return DEFAULT_CATEGORIES;
     }
   });
+
+  const [categoriesWithSections, setCategoriesWithSections] = useState<CategoryWithSections[]>(() => {
+    try {
+      const cached = localStorage.getItem('confisur_categories_ws_cache');
+      return cached ? JSON.parse(cached) : DEFAULT_CATEGORIES.map(c => ({ name: c, sections: [] }));
+    } catch {
+      return DEFAULT_CATEGORIES.map(c => ({ name: c, sections: [] }));
+    }
+  });
+
+  const [selectedSection, setSelectedSection] = useState<string>('Todos');
 
   const [isDbLoaded, setIsDbLoaded] = useState(false);
 
@@ -113,6 +132,10 @@ export default function App() {
       setCategories(cats);
     });
 
+    fetchCategoriesWithSections().then((catsWS) => {
+      setCategoriesWithSections(catsWS);
+    });
+
     // 2. Fetch Initial list of Products
     fetchProducts().then((prods) => {
       setProducts(prods);
@@ -128,6 +151,11 @@ export default function App() {
       if (unsub) unsub();
     };
   }, []);
+
+  // Reset selected section when main category filter changes
+  useEffect(() => {
+    setSelectedSection('Todos');
+  }, [selectedCategory]);
 
   // Apply dark mode toggling to documents body
   useEffect(() => {
@@ -220,8 +248,9 @@ export default function App() {
   // Handle adding new custom category from the administrator panel
   const handleAddCategory = async (categoryName: string) => {
     try {
-      const updatedCategories = await addCategory(categoryName);
-      setCategories(updatedCategories);
+      const updatedWS = await addCategoryWithSections(categoryName);
+      setCategoriesWithSections(updatedWS);
+      setCategories(updatedWS.map(c => c.name));
     } catch (e: any) {
       console.error(e);
       alert("❌ Error al añadir categoría en Firebase. Verifica tus Reglas de Seguridad en Firestore.");
@@ -231,14 +260,26 @@ export default function App() {
   // Handle category deletion from the administrator panel
   const handleDeleteCategory = async (categoryName: string) => {
     try {
-      const updatedCategories = await removeCategory(categoryName);
-      setCategories(updatedCategories);
+      const updatedWS = await removeCategoryWithSections(categoryName);
+      setCategoriesWithSections(updatedWS);
+      setCategories(updatedWS.map(c => c.name));
       if (selectedCategory === categoryName) {
         setSelectedCategory('Todos');
       }
     } catch (e: any) {
       console.error(e);
       alert("❌ Error al eliminar categoría en Firebase. Verifica tus Reglas de Seguridad en Firestore.");
+    }
+  };
+
+  // Handle updating sections for a category
+  const handleSaveCategorySections = async (categoryName: string, sections: string[]) => {
+    try {
+      const updatedWS = await saveCategorySections(categoryName, sections);
+      setCategoriesWithSections(updatedWS);
+    } catch (e: any) {
+      console.error(e);
+      alert("❌ Error al guardar las secciones en Firebase. Verifica tus Reglas de Seguridad.");
     }
   };
 
@@ -282,7 +323,8 @@ export default function App() {
     const matchesSearch = prod.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           prod.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'Todos' || prod.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    const matchesSection = selectedSection === 'Todos' || prod.section === selectedSection;
+    return matchesSearch && matchesCategory && matchesSection;
   });
 
   // Calculate product count per category
@@ -506,6 +548,56 @@ export default function App() {
                 <LayoutGrid className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Sub-sections / Sections inside category */}
+            {selectedCategory !== 'Todos' && (() => {
+              const activeCatInfo = categoriesWithSections.find(c => c.name === selectedCategory);
+              if (!activeCatInfo || !activeCatInfo.sections || activeCatInfo.sections.length === 0) return null;
+              return (
+                <div className="lg:col-span-12 border-t border-orange-100/50 dark:border-zinc-800/80 pt-4 mt-2">
+                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                    <span className="text-[10px] md:text-xs text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-wider mr-2 flex-shrink-0 flex items-center gap-1.5 font-display">
+                      <Tag className="w-3.5 h-3.5 text-orange-500" /> Secciones:
+                    </span>
+                    <button
+                      id="filter-section-todos"
+                      onClick={() => setSelectedSection('Todos')}
+                      className={`flex-shrink-0 px-3.5 py-1.5 rounded-xl font-display font-bold text-xs transition-all ${
+                        selectedSection === 'Todos'
+                          ? 'bg-orange-500 text-white shadow-xs'
+                          : 'bg-zinc-50 dark:bg-zinc-805 text-zinc-600 dark:text-zinc-400 hover:bg-orange-50 dark:hover:bg-zinc-800'
+                      }`}
+                    >
+                      🍭 Ver Todo
+                    </button>
+                    {activeCatInfo.sections.map((sec) => {
+                      const secCount = products.filter(p => p.category === selectedCategory && p.section === sec).length;
+                      return (
+                        <button
+                          key={sec}
+                          id={`filter-sec-${sec.toLowerCase().replace(/\s+/g, '-')}`}
+                          onClick={() => setSelectedSection(sec)}
+                          className={`flex-shrink-0 px-3.5 py-1.5 rounded-xl font-display font-semibold text-xs transition-all flex items-center gap-1.5 ${
+                            selectedSection === sec
+                              ? 'bg-amber-550 text-white shadow-xs'
+                              : 'bg-zinc-50 dark:bg-zinc-805 text-zinc-600 dark:text-zinc-400 hover:bg-orange-50/60 dark:hover:bg-zinc-805'
+                          }`}
+                        >
+                          <span>{sec}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                            selectedSection === sec 
+                              ? 'bg-white/20 text-white' 
+                              : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'
+                          }`}>
+                            {secCount}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
           </div>
         </div>
@@ -766,11 +858,13 @@ export default function App() {
         onClose={() => setIsAdminOpen(false)}
         products={products}
         categories={categories}
+        categoriesWithSections={categoriesWithSections}
         onAddProduct={handleAddProduct}
         onDeleteProduct={handleDeleteProduct}
         onClearAllProducts={handleClearAllProducts}
         onAddCategory={handleAddCategory}
         onDeleteCategory={handleDeleteCategory}
+        onSaveCategorySections={handleSaveCategorySections}
       />
 
     </div>

@@ -6,6 +6,12 @@ export interface Product {
   category: string;
   imageUrl: string;
   createdAt: number;
+  section?: string;
+}
+
+export interface CategoryWithSections {
+  name: string;
+  sections: string[];
 }
 
 export type Category = string;

@@ -12,7 +12,7 @@ import {
   query,
   orderBy
 } from 'firebase/firestore';
-import { Product } from '../types';
+import { Product, CategoryWithSections } from '../types';
 
 // These environment variables can be populated in Vercel, Netlify, or locally in .env
 const env = (import.meta as any).env || {};
@@ -48,53 +48,61 @@ if (isFirebaseConfigured) {
    1. CATEGORIES MANAGEMENT (LOCAL STORAGE & CLOUD SHARING)
    ========================================================================= */
 
-const DEFAULT_CATEGORIES = ['Caramelería', 'Chocolatería', 'Gomitas y Snacks'];
+export const DEFAULT_CATEGORIES = ['Caramelería', 'Chocolatería', 'Gomitas y Snacks'];
 
-export async function fetchCategories(): Promise<string[]> {
+export async function fetchCategoriesWithSections(): Promise<CategoryWithSections[]> {
   if (db) {
     try {
       const snap = await getDocs(collection(db, 'categories'));
-      const list = snap.docs.map(doc => doc.id);
-      if (list.length === 0) {
-        // Seed default categories in Firestore if empty
+      if (snap.empty) {
+        const seeded: CategoryWithSections[] = [];
         for (const cat of DEFAULT_CATEGORIES) {
-          await setDoc(doc(db, 'categories', cat), { createdAt: Date.now() });
+          const catObj = { name: cat, sections: [] };
+          await setDoc(doc(db, 'categories', cat), { createdAt: Date.now(), sections: [] });
+          seeded.push(catObj);
         }
-        localStorage.setItem('confisur_categories_cache', JSON.stringify(DEFAULT_CATEGORIES));
-        return DEFAULT_CATEGORIES;
+        localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(seeded));
+        return seeded;
       }
-      localStorage.setItem('confisur_categories_cache', JSON.stringify(list));
+      const list = snap.docs.map(doc => {
+        const data = doc.data();
+        return {
+          name: doc.id,
+          sections: data.sections || []
+        };
+      });
+      localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(list));
       return list;
     } catch (e) {
       console.error("Error fetching categories from firestore", e);
     }
   }
 
-  // Fallback Local Storage Mode
-  const saved = localStorage.getItem('confisur_dyn_categories');
+  const saved = localStorage.getItem('confisur_dyn_categories_ws');
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      localStorage.setItem('confisur_categories_cache', JSON.stringify(parsed));
+      localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(parsed));
       return parsed;
     } catch {
-      return DEFAULT_CATEGORIES;
+      // ignore
     }
   }
-  localStorage.setItem('confisur_dyn_categories', JSON.stringify(DEFAULT_CATEGORIES));
-  localStorage.setItem('confisur_categories_cache', JSON.stringify(DEFAULT_CATEGORIES));
-  return DEFAULT_CATEGORIES;
+  const initial = DEFAULT_CATEGORIES.map(cat => ({ name: cat, sections: [] }));
+  localStorage.setItem('confisur_dyn_categories_ws', JSON.stringify(initial));
+  localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(initial));
+  return initial;
 }
 
-export async function addCategory(categoryName: string): Promise<string[]> {
+export async function addCategoryWithSections(categoryName: string): Promise<CategoryWithSections[]> {
   const trimmed = categoryName.trim();
   if (!trimmed) return [];
 
   if (db) {
     try {
-      await setDoc(doc(db, 'categories', trimmed), { createdAt: Date.now() });
-      const updated = await fetchCategories();
-      localStorage.setItem('confisur_categories_cache', JSON.stringify(updated));
+      await setDoc(doc(db, 'categories', trimmed), { createdAt: Date.now(), sections: [] });
+      const updated = await fetchCategoriesWithSections();
+      localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(updated));
       return updated;
     } catch (e) {
       console.error("Error adding category to Firestore", e);
@@ -102,23 +110,22 @@ export async function addCategory(categoryName: string): Promise<string[]> {
     }
   }
 
-  // Local Storage Mode
-  const current = await fetchCategories();
-  if (!current.includes(trimmed)) {
-    const next = [...current, trimmed];
-    localStorage.setItem('confisur_dyn_categories', JSON.stringify(next));
-    localStorage.setItem('confisur_categories_cache', JSON.stringify(next));
+  const current = await fetchCategoriesWithSections();
+  if (!current.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+    const next = [...current, { name: trimmed, sections: [] }];
+    localStorage.setItem('confisur_dyn_categories_ws', JSON.stringify(next));
+    localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(next));
     return next;
   }
   return current;
 }
 
-export async function removeCategory(categoryName: string): Promise<string[]> {
+export async function removeCategoryWithSections(categoryName: string): Promise<CategoryWithSections[]> {
   if (db) {
     try {
       await deleteDoc(doc(db, 'categories', categoryName));
-      const updated = await fetchCategories();
-      localStorage.setItem('confisur_categories_cache', JSON.stringify(updated));
+      const updated = await fetchCategoriesWithSections();
+      localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(updated));
       return updated;
     } catch (e) {
       console.error("Error deleting category from Firestore", e);
@@ -126,19 +133,54 @@ export async function removeCategory(categoryName: string): Promise<string[]> {
     }
   }
 
-  // Local Storage Mode
-  const current = await fetchCategories();
-  const next = current.filter(c => c !== categoryName);
-  localStorage.setItem('confisur_dyn_categories', JSON.stringify(next));
-  localStorage.setItem('confisur_categories_cache', JSON.stringify(next));
+  const current = await fetchCategoriesWithSections();
+  const next = current.filter(c => c.name !== categoryName);
+  localStorage.setItem('confisur_dyn_categories_ws', JSON.stringify(next));
+  localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(next));
   return next;
+}
+
+export async function saveCategorySections(categoryName: string, sections: string[]): Promise<CategoryWithSections[]> {
+  const trimmedSections = sections.map(s => s.trim()).filter(Boolean);
+  if (db) {
+    try {
+      await setDoc(doc(db, 'categories', categoryName), { sections: trimmedSections }, { merge: true });
+      const updated = await fetchCategoriesWithSections();
+      localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(updated));
+      return updated;
+    } catch (e) {
+      console.error("Error saving category sections in Firestore", e);
+      throw e;
+    }
+  }
+
+  const current = await fetchCategoriesWithSections();
+  const next = current.map(c => c.name === categoryName ? { ...c, sections: trimmedSections } : c);
+  localStorage.setItem('confisur_dyn_categories_ws', JSON.stringify(next));
+  localStorage.setItem('confisur_categories_ws_cache', JSON.stringify(next));
+  return next;
+}
+
+export async function fetchCategories(): Promise<string[]> {
+  const cws = await fetchCategoriesWithSections();
+  return cws.map(c => c.name);
+}
+
+export async function addCategory(categoryName: string): Promise<string[]> {
+  const cws = await addCategoryWithSections(categoryName);
+  return cws.map(c => c.name);
+}
+
+export async function removeCategory(categoryName: string): Promise<string[]> {
+  const cws = await removeCategoryWithSections(categoryName);
+  return cws.map(c => c.name);
 }
 
 /* =========================================================================
    2. PRODUCTS MANAGEMENT (LOCAL STORAGE & CLOUD SHARING)
    ========================================================================= */
 
-const DEFAULT_PRODUCTS: Product[] = [
+export const DEFAULT_PRODUCTS: Product[] = [
   {
     id: 'seed-1',
     name: 'Chupetas Arcoíris',

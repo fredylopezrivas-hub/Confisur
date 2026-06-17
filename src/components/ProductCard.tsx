@@ -19,9 +19,16 @@ export function ProductCard({ product }: ProductCardProps) {
     >
       <div className="relative w-full aspect-[3/4] md:aspect-[4/5] bg-orange-50/30 dark:bg-zinc-800/30 overflow-hidden flex items-center justify-center">
         {/* Category Tag (Floating, subtle and clean) */}
-        <span className="absolute top-3 left-3 z-20 px-2.5 py-1 bg-amber-500/90 dark:bg-amber-600/90 backdrop-blur-xs text-white text-[10px] font-bold rounded-lg shadow-sm font-display tracking-wide">
-          {product.category}
-        </span>
+        <div className="absolute top-3 left-3 z-20 flex flex-col sm:flex-row gap-1">
+          <span className="px-2.5 py-1 bg-amber-500/90 dark:bg-amber-600/90 backdrop-blur-xs text-white text-[10px] font-bold rounded-lg shadow-sm font-display tracking-wide uppercase">
+            {product.category}
+          </span>
+          {product.section && (
+            <span className="px-2.5 py-1 bg-zinc-950/80 dark:bg-zinc-800/95 backdrop-blur-xs text-amber-250 text-[10px] font-bold rounded-lg shadow-sm font-display tracking-wide">
+              🍬 {product.section}
+            </span>
+          )}
+        </div>
 
         {/* Blurred Backdrop */}
         <img
@@ -50,8 +57,14 @@ export function ProductCard({ product }: ProductCardProps) {
         <h3 className="font-display font-black text-sm text-zinc-800 dark:text-zinc-150 line-clamp-2 leading-tight group-hover:text-orange-500 transition-colors">
           {product.name}
         </h3>
-        <p className="text-[10px] text-zinc-400 dark:text-zinc-500 font-bold mt-1.5 uppercase tracking-wide">
-          {product.category}
+        <p className="text-[10px] text-zinc-400 dark:text-zinc-550 font-bold mt-1.5 uppercase tracking-wide flex flex-wrap items-center gap-1.5">
+          <span>{product.category}</span>
+          {product.section && (
+            <>
+              <span className="text-orange-400 dark:text-zinc-700 font-black">•</span>
+              <span className="text-orange-600 dark:text-amber-400 font-extrabold">{product.section}</span>
+            </>
+          )}
         </p>
       </div>
     </motion.div>
