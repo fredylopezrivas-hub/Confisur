@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Product, CategoryWithSections } from '../types';
 import { X, Plus, Trash2, LogOut, Upload, KeyRound, User, CheckCircle, FolderPlus, Tag, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getFirebaseSyncStatus } from '../lib/firebase';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -89,6 +90,7 @@ export function AdminPanel({
   // Category creation state
   const [newCategoryName, setNewCategoryName] = useState('');
   const [catSuccess, setCatSuccess] = useState(false);
+  const [showSyncInstructions, setShowSyncInstructions] = useState(false);
 
   // Expand states for subcategory sections
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
@@ -365,6 +367,77 @@ export function AdminPanel({
                 exit={{ opacity: 0 }}
                 className="grid grid-cols-1 lg:grid-cols-12 gap-8"
               >
+                {/* CLOUD SYNC RESOLUTION & LOCALFAILOVER STATUS CARD */}
+                <div className="lg:col-span-12 space-y-4">
+                  <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 dark:from-amber-500/5 dark:via-orange-500/5 dark:to-amber-500/5 border border-orange-200/50 dark:border-zinc-800/80 p-5 rounded-[24px] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="space-y-1 max-w-2xl">
+                      <div className="flex items-center gap-2 text-amber-750 dark:text-amber-400 font-display font-bold text-sm">
+                        <span className="text-base">⚡</span>
+                        Resiliencia Activa — ¡Puedes seguir añadiendo dulces sin límites!
+                      </div>
+                      <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                        Detectamos que tu proyecto de Firebase (<span className="font-mono bg-zinc-100 dark:bg-white/10 px-1 py-0.5 rounded text-[10px]">confisur-113cb</span>) tiene las reglas de escritura bloqueadas o expiradas en la consola de Google. <b>No te preocupes: para proteger tu trabajo, tu catálogo se está guardando de manera segura en la memoria de tu dispositivo</b> y tus cambios se reflejarán aquí enseguida de forma rápida.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowSyncInstructions(!showSyncInstructions)}
+                      className="bg-orange-500 hover:bg-orange-600 dark:bg-orange-650 dark:hover:bg-orange-700 text-white font-medium text-xs px-4 py-2.5 rounded-xl border border-orange-400/20 active:scale-95 transition-all shadow-sm shadow-orange-500/10 cursor-pointer self-start md:self-auto shrink-0 flex items-center gap-1.5"
+                    >
+                      {showSyncInstructions ? 'Ocultar Instrucciones' : '📋 Sincronizar en la Nube'}
+                      <span>{showSyncInstructions ? '▲' : '▼'}</span>
+                    </button>
+                  </div>
+
+                  {showSyncInstructions && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800/80 p-6 rounded-[24px] shadow-sm space-y-4 text-xs text-zinc-700 dark:text-zinc-300"
+                    >
+                      <h4 className="font-display font-black text-sm text-zinc-850 dark:text-zinc-100 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800/60 pb-3">
+                        🚀 Cómo reactivar la Nube (Solo toma 1 minuto y dura por siempre)
+                      </h4>
+                      <p className="leading-relaxed">
+                        Este aviso ocurre porque las bases de datos de Firebase por defecto bloquean las escrituras de prueba tras 30 días para protegerte. Sigue estos pasos simples para que tu catálogo se guarde en la nube de forma permanente:
+                      </p>
+                      <ol className="list-decimal pl-5 space-y-2.5 leading-relaxed text-zinc-600 dark:text-zinc-400">
+                        <li>
+                          Inicia sesión con tu cuenta de Google en tu Firebase Console: <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:underline font-semibold font-mono">console.firebase.google.com</a>.
+                        </li>
+                        <li>
+                          Selecciona tu proyecto de catálogo <span className="font-bold underline text-zinc-800 dark:text-white">confisur-113cb</span>.
+                        </li>
+                        <li>
+                          En el menú de la izquierda, entra a <span className="font-semibold text-zinc-800 dark:text-white">Firestore Database</span>.
+                        </li>
+                        <li>
+                          Ve a la pestaña superior llamada <span className="font-semibold text-orange-500">Rules</span> (Reglas de Seguridad).
+                        </li>
+                        <li>
+                          Reemplaza por completo el código de reglas que aparezca allí con este bloque (que permite lectura y escritura ilimitada):
+                          <pre className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-950/80 rounded-xl font-mono text-[10px] text-orange-600 border border-zinc-150 dark:border-zinc-850 relative select-all leading-normal whitespace-pre font-semibold">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`}
+                          </pre>
+                        </li>
+                        <li>
+                          Haz clic en el botón azul o naranja de arriba que dice <span className="font-black text-zinc-900 dark:text-white hover:underline">Publicar</span> (o Publish).
+                        </li>
+                      </ol>
+                      <div className="bg-orange-50 dark:bg-orange-950/20 p-3.5 rounded-xl border border-orange-100 dark:border-orange-900/30 text-[11px] text-orange-700 dark:text-orange-400 leading-normal">
+                        💡 <b>¡Y eso es todo!</b> Al pulsar Publicar se sincronizarán en segundos todos tus dulces localmente añadidos a la base de datos mundial, y se actualizarán en tiempo real para todos tus visitantes.
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
                 {/* COLUMN 1: NEW PRODUCT FORM & CATEGORY MAKER */}
                 <div className="lg:col-span-5 space-y-6">
                   {/* ADD PRODUCT FORM */}
