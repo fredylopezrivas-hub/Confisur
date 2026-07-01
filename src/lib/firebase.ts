@@ -23,11 +23,19 @@ export function safeSetItem(key: string, value: string): void {
     try {
       const parsed = JSON.parse(value);
       if (Array.isArray(parsed)) {
-        // Strip out base64 images from localStorage to keep the cache lightweight (only ~400KB for 4,000 items)
-        // while 100% of full images and files remain safe and loaded fresh from Google Cloud Firestore!
-        const cleaned = parsed.map(item => {
+        // Only strip base64 images for older synced items.
+        // We preserve images for any unsynced products or the 30 most recent products
+        // to ensure they display beautifully and don't load as broken or placeholder images.
+        const unsynced = getUnsyncedProducts();
+        const unsyncedIds = new Set(unsynced.map(p => p.id));
+        
+        const cleaned = parsed.map((item, idx) => {
           if (item && item.imageUrl && item.imageUrl.startsWith('data:')) {
-            return { ...item, imageUrl: '' };
+            const isUnsynced = unsyncedIds.has(item.id);
+            const isRecent = idx < 30; // Keep the 30 most recent items intact
+            if (!isUnsynced && !isRecent) {
+              return { ...item, imageUrl: '' };
+            }
           }
           return item;
         });
@@ -68,13 +76,18 @@ export function saveProductsCache(prods: Product[]): void {
       return;
     }
     
-    // To support 4,000+ items flawlessly:
-    // Strip all heavy base64 image data (strings starting with "data:") from the offline speed cache.
-    // Real images remain 100% safe and secure in the Cloud Firestore database.
-    // This allows the local cache to store many thousands of items in less than 500KB!
-    const cachedProducts = prods.map(p => {
+    const unsynced = getUnsyncedProducts();
+    const unsyncedIds = new Set(unsynced.map(p => p.id));
+    
+    // Keep heavy base64 image data intact for the most recent 30 items or any unsynced items,
+    // and only strip it for older synced items.
+    const cachedProducts = prods.map((p, idx) => {
       if (p.imageUrl && p.imageUrl.startsWith('data:')) {
-        return { ...p, imageUrl: '' }; // Remove heavy base64 only from the local browser storage cache
+        const isUnsynced = unsyncedIds.has(p.id);
+        const isRecent = idx < 30;
+        if (!isUnsynced && !isRecent) {
+          return { ...p, imageUrl: '' };
+        }
       }
       return p;
     });

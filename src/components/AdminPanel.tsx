@@ -103,15 +103,35 @@ export function AdminPanel({
     }
   }, [categories, newCategory]);
 
+  // Track previous category to detect actual category rotation
+  const prevCategoryRef = React.useRef(newCategory);
+
   // Handle section auto-preselection when category rotates
   React.useEffect(() => {
-    const activeCatInfo = categoriesWithSections.find(c => c.name === newCategory);
-    if (activeCatInfo && activeCatInfo.sections && activeCatInfo.sections.length > 0) {
-      setNewSection(activeCatInfo.sections[0]);
+    if (prevCategoryRef.current !== newCategory) {
+      // Category actually changed!
+      prevCategoryRef.current = newCategory;
+      const activeCatInfo = categoriesWithSections.find(c => c.name === newCategory);
+      if (activeCatInfo && activeCatInfo.sections && activeCatInfo.sections.length > 0) {
+        setNewSection(activeCatInfo.sections[0]);
+      } else {
+        setNewSection('');
+      }
     } else {
-      setNewSection('');
+      // Category did not change, but maybe categoriesWithSections updated (e.g. background sync)
+      // Verify if the current selection is still valid in the updated sections list
+      const activeCatInfo = categoriesWithSections.find(c => c.name === newCategory);
+      const sections = activeCatInfo?.sections || [];
+      // If we have a section selected, but it is no longer in the list, reset it
+      if (newSection && !sections.includes(newSection)) {
+        if (sections.length > 0) {
+          setNewSection(sections[0]);
+        } else {
+          setNewSection('');
+        }
+      }
     }
-  }, [newCategory, categoriesWithSections]);
+  }, [newCategory, categoriesWithSections, newSection]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
